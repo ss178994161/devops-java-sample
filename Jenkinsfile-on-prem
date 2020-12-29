@@ -35,20 +35,6 @@ pipeline {
             }
         }
 
-        stage('sonarqube analysis') {
-          steps {
-            container ('maven') {
-              withCredentials([string(credentialsId: "$SONAR_CREDENTIAL_ID", variable: 'SONAR_TOKEN')]) {
-                withSonarQubeEnv('sonar') {
-                 sh "mvn sonar:sonar -o -gs `pwd`/configuration/settings.xml -Dsonar.branch=$BRANCH_NAME -Dsonar.login=$SONAR_TOKEN"
-                }
-              }
-              timeout(time: 1, unit: 'HOURS') {
-                waitForQualityGate abortPipeline: true
-              }
-            }
-          }
-        }
 
         stage ('build & push') {
             steps {
@@ -75,45 +61,16 @@ pipeline {
            }
         }
 
-        stage('deploy to dev') {
+        stage('deploy to poc') {
           when{
             branch 'master'
           }
           steps {
-            input(id: 'deploy-to-dev', message: 'deploy to dev?')
+            input(id: 'deploy-to-poc', message: 'deploy to dev?')
             kubernetesDeploy(configs: 'deploy/dev/**', enableConfigSubstitution: true, kubeconfigId: "$KUBECONFIG_CREDENTIAL_ID")
           }
         }
-        stage('push with tag'){
-          when{
-            expression{
-              return params.TAG_NAME =~ /v.*/
-            }
-          }
-          steps {
-              container ('maven') {
-                input(id: 'release-image-with-tag', message: 'release image with tag?')
-                  withCredentials([usernamePassword(credentialsId: "$GITLAB_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                    sh 'git config --global user.email "kubesphere@yunify.com" '
-                    sh 'git config --global user.name "kubesphere" '
-                    sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
-                    sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@gitlab.devops.kubesphere.local:30080/$GITLAB_ACCOUNT/devops-java-sample.git --tags --ipv4'
-                  }
-                sh 'docker tag  $REGISTRY/$HARBOR_NAMESPACE/$APP_NAME:SNAPSHOT-$BRANCH_NAME-$BUILD_NUMBER $REGISTRY/$HARBOR_NAMESPACE/$APP_NAME:$TAG_NAME '
-                sh 'docker push  $REGISTRY/$HARBOR_NAMESPACE/$APP_NAME:$TAG_NAME '
-          }
-          }
-        }
-        stage('deploy to production') {
-          when{
-            expression{
-              return params.TAG_NAME =~ /v.*/
-            }
-          }
-          steps {
-            input(id: 'deploy-to-production', message: 'deploy to production?')
-            kubernetesDeploy(configs: 'deploy/prod/**', enableConfigSubstitution: true, kubeconfigId: "$KUBECONFIG_CREDENTIAL_ID")
-          }
-        }
+
+        
     }
 }
